@@ -1,0 +1,7 @@
+## Interface: 30400
+## Title: BadTranslator
+## Notes: Can almost translate foreign messages intelligebly.
+## LoadOnDemand: 0
+## SavedVariables: BadTranslator
+Localization.lua
+BadTranslator.lua
