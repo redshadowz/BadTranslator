@@ -126,7 +126,7 @@ function BT_ProcessStringToTable(arg1,getLanguage,forGroupFinder,noSpaces,savePu
 						if BT_WORD_ACCENT_ASCII_LETTERS[lfs] then
 							if lfs == 226 then
 								lfs = BT_WORD_ACCENT_ASCII_LETTERS[strsub(stringC,tPos,tPos+2)]
-								if not lfs then if not BadTranslator["MISSING"] then BadTranslator["MISSING"] = {} end table.insert(BadTranslator["MISSING"],{strPos,stringA,strsub(stringC,tPos,tPos+2),stringE}) if strbyte(stringC,tPos+2) == 128 then lfs = BT_WORD_ACCENT_ASCII_LETTERS[strsub(stringC,tPos,tPos+3)] if not lfs then lfs = strsub(stringC,tPos,tPos+3) end tVal = 3 else lfs = strsub(stringC,tPos,tPos+2) tVal = 2 end else tVal = 2 end
+								if not lfs then if not BadTranslator["MISSING"] then BadTranslator["MISSING"] = {} end table.insert(BadTranslator["MISSING"],{strPos,stringA,strsub(stringC,tPos,tPos+2),stringE}) if strbyte(stringC,tPos+2) == 128 then lfs = BT_WORD_ACCENT_ASCII_LETTERS[strsub(stringC,tPos,tPos+3)] if not lfs then lfs = strsub(stringC,tPos,tPos+3) end tVal = 4 else lfs = strsub(stringC,tPos,tPos+2) tVal = 3 end else tVal = 3 end
 								if lfs ~= pVal then
 									if cTable[1] then
 										table.insert(tTable, {strsub(stringA,sLastPos,tPos-1),table.concat(cTable)}) cTable = {}
@@ -142,7 +142,7 @@ function BT_ProcessStringToTable(arg1,getLanguage,forGroupFinder,noSpaces,savePu
 										table.insert(tTable, "")
 									end
 								end
-								tPos = tPos + 3
+								tPos = tPos + tVal
 								sLastPos = tPos
 							else
 								lfs = BT_WORD_ACCENT_ASCII_LETTERS[strsub(stringC,tPos,tPos+1)]
@@ -265,7 +265,7 @@ function BT_TranslateString(arg1)
 						if stringA then
 							for k=2, j, 2 do stringA = stringA..wordTable[i][2][lfs+k][2] end
 							if BT_UNIQUE_SINGLE_WORDS[languageName][stringA] then
-								wordTable[i][2][lfs] = {BT_UNIQUE_SINGLE_WORDS[languageName][stringA],"Z"}
+								wordTable[i][2][lfs] = {BT_UNIQUE_SINGLE_WORDS[languageName][stringA],"Z"} -- The Z is placeholder since multiple/single is processed separately
 								for k=1, j do table.remove(wordTable[i][2],lfs+1) tPos=tPos-1 end
 							end
 							lfs = lfs + 2
