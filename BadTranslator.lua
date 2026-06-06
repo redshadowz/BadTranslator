@@ -68,8 +68,6 @@ function BT_SlashCommand(arg1)
 	end
 end
 
--- Groupfinder has to keep the original table structure to show translations in chat and menus(not just detection)
-
 function BT_ProcessStringToTable(arg1,getLanguage,noSpaces,savePunctuation,imported)
 -- 'noSpaces'(doesn't add spaces after Chinese letters)... 'savePunctuation'(saves Chinese and Ascii punctuation in original table), 'imported'(doesn't check for links)... Returns "wordTable or wordData, tableLen"
 -- Table Structure = { [1] = String Snippet = { [1] = Original String, [2] = { [1] = { [1] = original word/number/punctuation/chinese character, [2] = strlower(no ascii) }, [2] = space or blank, [3/4] = repeat pattern from 1/2 }, [2] = repeat pattern from 1 }
@@ -199,25 +197,22 @@ function BT_ProcessStringToTable(arg1,getLanguage,noSpaces,savePunctuation,impor
 				if stringB == " " then
 					table.insert(tTable, " ")
 				else
-					cTable = {} tPos = 1 tVal = nil pVal = nil
+					cTable = {} tPos = 1 tVal = nil
 					while true do -- Separate spaces from stringB
 						lfs = strsub(stringB,tPos,tPos)
-						if lfs ~= pVal then
-							if lfs == " " then
-								if cTable[1] then
-									stringD = table.concat(cTable)
-									if not tVal then table.insert(tTable, "") end
-									table.insert(tTable, {stringD,stringD})
-									cTable = {}
-								end
-								table.insert(tTable, " ")
-								while true do if strbyte(stringB,tPos+1) == 32 then tPos = tPos + 1 else break end end
-								tVal = true
-							else
-								if lfs == "" then break end
-								if lfs ~= pVal then table.insert(cTable, lfs) end
+						if lfs == " " then
+							if cTable[1] then
+								stringD = table.concat(cTable)
+								if not tVal then table.insert(tTable, "") end
+								table.insert(tTable, {stringD,stringD})
+								cTable = {}
 							end
-							pVal = lfs
+							table.insert(tTable, " ")
+							while true do if strbyte(stringB,tPos+1) == 32 then tPos = tPos + 1 else break end end
+							tVal = true
+						else
+							if lfs == "" then break end
+							table.insert(cTable, lfs)
 						end
 						tPos = tPos + 1
 					end
@@ -254,9 +249,9 @@ function BT_ProcessStringToTable(arg1,getLanguage,noSpaces,savePunctuation,impor
 	end
 end
 function BT_TranslateString(arg1)
--- Can run 1000 times of " La Guild Leyendas Latam - Busca TANKES DPS HEALS - Lows para subir lvl, MAZMORRAS - QUEST ETC - SUSURRAM" in 150-220 ms.. This is on a 2014 mid-range processor.... old was 250 ms, new is 190 ms
--- Can run 1000 times of "黑石深淵任務團來法師，會路線++" in about 170 ms.. or about .017 ms.... Old was 170 ms.. new is 150 ms
--- Something I didn't expect, the more languages installed, the worse the performance. If only Spanish, I get 190 MS. With all languages installed, I get 320 ms... For Chinese alone I get 150 ms. With all languages I get 180 ms.
+-- Can run 100000 times of "La Guild Leyendas Latam - Busca TANKES DPS HEALS - Lows para subir lvl, MAZMORRAS - QUEST ETC - SUSURRAM" in 17 seconds(.17 ms).. This is on a 2014 mid-range processor.
+-- Can run 100000 times of "黑石深淵任務團來法師，會路線++" in about 11 seconds(.11 ms).
+-- PS: The more languages installed, the worse the performance. If only Spanish I get .17 MS. With all languages I get .33 ms... For Chinese alone I get .11 ms. With all languages I get .19 ms. Most likely because of external language packs.
 	local wordData,tableLen = BT_ProcessStringToTable(arg1,true) -- arg1,getLanguage,noSpaces,savePunctuation,imported
 	local stringA,lfs,lfe,tLen = {}
 	local languageName = "en"
@@ -299,7 +294,7 @@ function BT_TranslateString(arg1)
 						for j=1, tLen, 2 do
 							stringA = data[i][j][2]
 							if BT_WORD_PUNCTUATION_NO_SPACE[strbyte(stringA)] then
-								if BT_WORD_PUNCTUATION_CONNECTING[stringA] and j > 2 and tLen > j+2 then
+								if BT_WORD_PUNCTUATION_CONNECTING[stringA] and data[i][j-2][2] and tLen > j+2 then
 									stringA = data[i][j-2][2]..data[i][j+2][2]
 									if BT_UNIQUE_SINGLE_WORDS[languageID][stringA] then
 										data[i][j] = BT_UNIQUE_SINGLE_WORDS[languageID][stringA]
@@ -328,7 +323,7 @@ function BT_TranslateString(arg1)
 			for i=1, tableLen do
 				if data[i][1] then
 					for j=1, getn(data[i]),2 do
-						if BT_UNIQUE_SINGLE_WORDS[languageID][data[i][j][1]] then totalFound = totalFound + 1 elseif not BT_WORD_PUNCTUATION_NO_SPACE[strbyte(data[i][j][2])] then totalFound = totalFound + .25 end
+						if BT_ENGLISH_WORDS then if BT_UNIQUE_SINGLE_WORDS["en"][data[i][j][1]] then totalFound = totalFound + 1 end else if not BT_WORD_PUNCTUATION_NO_SPACE[strbyte(data[i][j][2])] then totalFound = totalFound + .25 end end
 						data[i][j] = data[i][j][1]
 					end
 					data[i] = table.concat(data[i])
