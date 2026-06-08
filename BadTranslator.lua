@@ -1,4 +1,4 @@
-BadTranslator = { ["WordDetect"] = {},["Config"] = {0.00001,0.000001}}
+BadTranslator = { ["WordDetect"] = {},["Config"] = {0.00001,0.000001},["LANGUAGES"] = {} }
 local BT_Languages = {}
 local BT_Frame = CreateFrame'Frame'
 BT_Frame:Hide()
@@ -21,8 +21,10 @@ function BT_SlashCommand(arg1)
 		DEFAULT_CHAT_FRAME:AddMessage("'/bt' <message> to display translation.")
 		DEFAULT_CHAT_FRAME:AddMessage("'/bt db new' to create a fresh database from installed languages.")
 		DEFAULT_CHAT_FRAME:AddMessage("'/bt db add' to add languages to the existing database.")
+		DEFAULT_CHAT_FRAME:AddMessage("'/bt db <languageID>' to add the specified language to the existing database.")
 		DEFAULT_CHAT_FRAME:AddMessage("'/bt db export' to create an exportable database(add only).")
 		DEFAULT_CHAT_FRAME:AddMessage("'/bt db export new' to create a fresh exportable database.")
+		DEFAULT_CHAT_FRAME:AddMessage("'/bt db export <languageID>' to add and export the specified language to the existing database.")
 		DEFAULT_CHAT_FRAME:AddMessage("'/bt clear' to wipe export databases.")
 		DEFAULT_CHAT_FRAME:AddMessage("'/bt clear all' to clear all databases.")
 		DEFAULT_CHAT_FRAME:AddMessage("'/bt list' to show processed languages.")
@@ -30,17 +32,23 @@ function BT_SlashCommand(arg1)
 		DEFAULT_CHAT_FRAME:AddMessage("'/bt xlimit #' words per million for export = "..(BadTranslator["Config"][2]*1000000).." (Default: 1)")
 		DEFAULT_CHAT_FRAME:AddMessage("'/bt finish' to finish a previous process that timed out.")
 		DEFAULT_CHAT_FRAME:AddMessage("*Exports to BadTranslator.lua in the WTF folder.")
-	elseif (cmd == "db" or cmd == "database") and (not param or param == "new" or param == "add" or param == "export" or param == "export new") then
+	elseif (cmd == "db" or cmd == "database") and (not param or param == "new" or param == "add" or param == "export" or param == "export new" or (strlen(param) == 2 and BT_Languages[strsub(param,-2)]) or (strsub(param,1,6) == "export" and BT_Languages[strsub(param,-2)])) then
 		if not param then
 			DEFAULT_CHAT_FRAME:AddMessage("DB options are 'new', 'add', 'export', and 'export new'.") return
 		elseif param == "new" then
 			BT_GetListOfUsedWords()
 		elseif param == "add" then
 			BT_GetListOfUsedWords(true)
+		elseif strlen(param) == 2 and BT_Languages[strsub(param,-2)] then
+			BadTranslator["LANGUAGES"][strsub(param,-2)] = nil
+			BT_GetListOfUsedWords(true,strsub(param,-2))
 		elseif param == "export" then
-			BT_GetListOfUsedWords(true,true)
+			BT_GetListOfUsedWords(true,nil,true)
 		elseif param == "export new" then
-			BT_GetListOfUsedWords(nil,true)
+			BT_GetListOfUsedWords(nil,nil,true)
+		elseif strsub(param,1,6) == "export" and BT_Languages[strsub(param,-2)] then
+			BadTranslator["LANGUAGES"][strsub(param,-2)] = nil
+			BT_GetListOfUsedWords(true,strsub(param,-2),true)
 		end
 	elseif not param and (cmd == "list") then
 		if not BadTranslator["LANGUAGES"] then
@@ -51,17 +59,21 @@ function BT_SlashCommand(arg1)
 			DEFAULT_CHAT_FRAME:AddMessage("Installed: "..strsub(langString,1,-2))
 		end
 	elseif cmd == "clear" and (not param or param == "all") then
-		for entryName,data in pairs(BadTranslator) do if (param == "all" and entryName ~= "Config") or (not param and entryName ~= "WordDetect" and entryName ~= "LANGUAGES" and entryName ~= "Config") then
+		for entryName,data in pairs(BadTranslator) do
+			if param == "all" or (not param and entryName ~= "WordDetect" and entryName ~= "LANGUAGES" and entryName ~= "Config") then
 				DEFAULT_CHAT_FRAME:AddMessage("Cleared "..entryName.."...")
 				BadTranslator[entryName] = nil
 			end
+			if not BadTranslator["WordDetect"] then BadTranslator["WordDetect"] = {} end
+			if not BadTranslator["Config"] then BadTranslator["Config"] = {0.00001,0.000001} end
+			if not BadTranslator["LANGUAGES"] then BadTranslator["LANGUAGES"] = {} end
 		end
 	elseif (cmd == "dlimit") and (not param or tonumber(param)) then
 		if not param then DEFAULT_CHAT_FRAME:AddMessage("No number given. Usage is '/bt dlimit #'") elseif tonumber(param) < 1 or tonumber(param) > 1000000 then DEFAULT_CHAT_FRAME:AddMessage("Number out of range.") else BadTranslator["Config"][1] = tonumber(param)/1000000 DEFAULT_CHAT_FRAME:AddMessage("Detection limit has been set to "..(BadTranslator["Config"][1]*1000000).." words per million.") end
 	elseif (cmd == "xlimit") then
 		if not param then DEFAULT_CHAT_FRAME:AddMessage("No number given. Usage is '/bt xlimit #'") elseif tonumber(param) < 1 or tonumber(param) > 1000000 then DEFAULT_CHAT_FRAME:AddMessage("Number out of range.") else BadTranslator["Config"][2] = tonumber(param)/1000000 DEFAULT_CHAT_FRAME:AddMessage("Export limit has been set to "..(BadTranslator["Config"][2]*1000000).." words per million.") end
 	elseif not param and (cmd == "finish") then
-		if BadTranslator["NOTFINISHED"] then BT_GetListOfUsedWords(true,BadTranslator["NOTFINISHED"],true) else DEFAULT_CHAT_FRAME:AddMessage("There is nothing to finish.") end
+		if BadTranslator["NOTFINISHED"] then BT_GetListOfUsedWords(true,nil,BadTranslator["NOTFINISHED"],true) else DEFAULT_CHAT_FRAME:AddMessage("There is nothing to finish.") end
 	else
 		arg1 = BT_TranslateString(arg1)
 		DEFAULT_CHAT_FRAME:AddMessage(arg1)
@@ -112,7 +124,7 @@ function BT_ProcessStringToTable(arg1,getLanguage,noSpaces,savePunctuation,impor
 						if BT_WORD_ACCENT_ASCII_LETTERS[lfs] then
 							if lfs == 226 then
 								lfs = BT_WORD_ACCENT_ASCII_LETTERS[strsub(stringC,tPos,tPos+2)]
-								if not lfs then if not BadTranslator["MISSING"] then BadTranslator["MISSING"] = {} end table.insert(BadTranslator["MISSING"],{strPos,stringA,strsub(stringC,tPos,tPos+2),stringE}) if strbyte(stringC,tPos+2) == 128 then lfs = BT_WORD_ACCENT_ASCII_LETTERS[strsub(stringC,tPos,tPos+3)] if not lfs then lfs = strsub(stringC,tPos,tPos+3) end tVal = 4 else lfs = strsub(stringC,tPos,tPos+2) tVal = 3 end else tVal = 3 end
+								if not lfs then if not BadTranslator["MISSING"] then BadTranslator["MISSING"] = {} end table.insert(BadTranslator["MISSING"],{tPos,stringA,strsub(stringA,tPos,tPos+2),stringE,strbyte(stringA,tPos),strbyte(stringA,tPos+1),strbyte(stringA,tPos+2)}) if strbyte(stringC,tPos+2) == 128 then lfs = BT_WORD_ACCENT_ASCII_LETTERS[strsub(stringC,tPos,tPos+3)] if not lfs then lfs = strsub(stringC,tPos,tPos+3) end tVal = 4 else lfs = strsub(stringC,tPos,tPos+2) tVal = 3 end else tVal = 3 end
 								if lfs ~= pVal then
 									if cTable[1] then
 										table.insert(tTable, {strsub(stringA,sLastPos,tPos-1),table.concat(cTable)}) cTable = {}
@@ -132,7 +144,8 @@ function BT_ProcessStringToTable(arg1,getLanguage,noSpaces,savePunctuation,impor
 								sLastPos = tPos
 							else
 								lfs = BT_WORD_ACCENT_ASCII_LETTERS[strsub(stringC,tPos,tPos+1)]
-								if not lfs then lfs = strsub(stringC,tPos,tPos+1) if not BadTranslator["MISSING"] then BadTranslator["MISSING"] = {} end table.insert(BadTranslator["MISSING"],{strPos,stringA,strsub(stringC,tPos,tPos+2),stringE}) end
+								if lfs[1] then lfs = lfs[3](pVal) and lfs[2] or lfs[1] end
+								if not lfs then lfs = strsub(stringC,tPos,tPos+1) if not BadTranslator["MISSING"] then BadTranslator["MISSING"] = {} end table.insert(BadTranslator["MISSING"],{tPos,stringA,strsub(stringA,tPos,tPos+2),stringE,strbyte(stringA,tPos),strbyte(stringA,tPos+1),strbyte(stringA,tPos+2)}) end
 								tPos = tPos + 2
 								if lfs ~= pVal then
 									table.insert(cTable, lfs)
@@ -243,7 +256,7 @@ function BT_ProcessStringToTable(arg1,getLanguage,noSpaces,savePunctuation,impor
 				if wordTable[j][1] then for i=1, getn(wordTable[j][2]) do table.insert(wordData["en"][j], wordTable[j][2][i]) end else wordData["en"][j] = wordTable[j] end
 			end
 		end
-		return wordData, tableLen
+		return wordData, tableLen -- Returns wordData[languageID][snip#][1/2] = {word,word}/space
 	else
 		return wordTable, tableLen
 	end
@@ -254,8 +267,8 @@ function BT_TranslateString(arg1)
 -- PS: The more languages installed, the worse the performance. If only Spanish I get .17 MS. With all languages I get .33 ms... For Chinese alone I get .11 ms. With all languages I get .19 ms. Most likely because of external language packs.
 	local wordData,tableLen = BT_ProcessStringToTable(arg1,true) -- arg1,getLanguage,noSpaces,savePunctuation,imported
 	local stringA,lfs,lfe,tLen = {}
-	local languageName = "en"
-	local prevTotal,totalFound = 0
+	local language = "en"
+	local prevTotal,totalFound = -1
 	for languageID,data in pairs(wordData) do
 		totalFound = 0
 		if languageID ~= "en" and BT_Languages[languageID] then
@@ -284,10 +297,8 @@ function BT_TranslateString(arg1)
 						for j=1, tLen, 2 do
 							stringA = data[i][j][2]
 							if BT_UNIQUE_SINGLE_WORDS[languageID][stringA] then
-								data[i][j] = BT_UNIQUE_SINGLE_WORDS[languageID][stringA]
+								data[i][j] = {BT_UNIQUE_SINGLE_WORDS[languageID][stringA],"Z"}
 								totalFound = totalFound + 1
-							else
-								data[i][j] = data[i][j][1]
 							end
 						end
 					else
@@ -297,26 +308,19 @@ function BT_TranslateString(arg1)
 								if BT_WORD_PUNCTUATION_CONNECTING[stringA] and data[i][j-2][2] and tLen > j+2 then
 									stringA = data[i][j-2][2]..data[i][j+2][2]
 									if BT_UNIQUE_SINGLE_WORDS[languageID][stringA] then
-										data[i][j] = BT_UNIQUE_SINGLE_WORDS[languageID][stringA]
+										data[i][j] = {BT_UNIQUE_SINGLE_WORDS[languageID][stringA],"Z"}
 										totalFound = totalFound + 1
-									else
-										data[i][j] = data[i][j][1]
 									end
-								else
-									data[i][j] = data[i][j][1]
 								end
 							else
 								if strlen(stringA) <= 3 then stringA = strlower(data[i][j][1]) end
 								if BT_UNIQUE_SINGLE_WORDS[languageID][stringA] then
-									data[i][j] = BT_UNIQUE_SINGLE_WORDS[languageID][stringA]
+									data[i][j] = {BT_UNIQUE_SINGLE_WORDS[languageID][stringA],"Z"}
 									totalFound = totalFound + 1
-								else
-									data[i][j] = data[i][j][1]
 								end
 							end
 						end
 					end
-					data[i] = table.concat(data[i])
 				end
 			end
 		else
@@ -324,23 +328,35 @@ function BT_TranslateString(arg1)
 				if data[i][1] then
 					for j=1, getn(data[i]),2 do
 						if BT_ENGLISH_WORDS then if BT_UNIQUE_SINGLE_WORDS["en"][data[i][j][1]] then totalFound = totalFound + 1 end else if not BT_WORD_PUNCTUATION_NO_SPACE[strbyte(data[i][j][2])] then totalFound = totalFound + .25 end end
-						data[i][j] = data[i][j][1]
 					end
-					data[i] = table.concat(data[i])
 				end
 			end
 		end
-		if totalFound > prevTotal then languageName = languageID prevTotal = totalFound end
+		if totalFound > prevTotal then language = languageID prevTotal = totalFound end
 	end
-	return table.concat(wordData[languageName]), languageName
+	local translatedString = language == "en" and "" or strupper(language)..": "
+	for i=1, tableLen do
+		if type(wordData[language][i]) == "table" then
+			for j=1, getn(wordData[language][i]),2 do
+				translatedString = translatedString..wordData[language][i][j][1]..wordData[language][i][j+1]
+				wordData[language][i][j] = strbyte(wordData[language][i][j][2]) == 90 and strlower(wordData[language][i][j][1]) or strlower(wordData[language][i][j][2])
+			end
+		else
+			translatedString = translatedString..wordData[language][i]
+		end
+	end	
+	return translatedString, language, wordData[language], tableLen -- wordData[snip#][1/2] = word/space... word is either the original or the translated
 end
 function BT_ConvertBaseList(export) -- /script BT_ConvertBaseList() /script BT_ConvertBaseList(true)
--- This is for processing imported wordlists(["word"] = "translation")
+-- This is for processing imported wordlists(["word"] = "translation") in BT_IMPORT_FOR_PROCESSING in Localization.lua.. Mainly for converting foreign characters.
 -- Need to split single word from multi-word for detection
 -- Can I import/split German compound words for items? when importing Chinese, can I split for proper names? automatically add for proper name and title or whatever.
-	local StringA1,StringB1,StringC1,StringE1,StringB2,StringE2
+	local StringA1,StringB1,StringC1,StringE1,StringB2,StringE2,StringLen1,StringLen2
 	local wordTable,tempTable
 	BadTranslator["IMPORTED"] = {}
+	BadTranslator["IMPORTTEMP"] = {}
+	BadTranslator["SORT"] = {}
+	BadTranslator["SORTTEMP"] = {}
 	if export then BadTranslator["POSSIBLE"] = {} end
 	for arg1,arg2 in pairs(BT_IMPORT_FOR_PROCESSING) do -- A)Original word, B) No Ascii letters, C) Include [!+-.,<=>] D) No punctuation E) No spaces
 		wordTable = BT_ProcessStringToTable(arg1,nil,true,true,true) -- First word... arg1,getLanguage,noSpaces,savePunctuation,imported
@@ -348,65 +364,101 @@ function BT_ConvertBaseList(export) -- /script BT_ConvertBaseList() /script BT_C
 		StringE1,StringE2 = "","","",""
 		for j=1, getn(wordTable),2 do if not BT_WORD_PUNCTUATION_NO_SPACE[strbyte(wordTable[j][2])] then StringE1 = StringE1..wordTable[j][2] end end -- StringE1(stripped no spaces)
 		for j=1, getn(tempTable),2 do if not BT_WORD_PUNCTUATION_NO_SPACE[strbyte(tempTable[j][2])] then StringE2 = StringE2..tempTable[j][2] end end -- StringE2(stripped)
-		if StringE1 ~= StringE2 and (not export or not BT_EXCLUSIONS[StringE1]) then
-			StringA1,StringB1,StringC1,StringB2 = "","",""
+		if StringE1 ~= StringE2 and not BT_EXCLUSIONS[StringE1] then -- if StringE1 ~= StringE2 and (not export or not BT_EXCLUSIONS[StringE1]) then
+			StringLen1 = strlen(StringE1)
+			StringLen2 = strlen(StringE2)
+			StringA1,StringB1,StringC1,StringB2 = "","","",""
 			for j=1, getn(wordTable),2 do -- StringA1,StringB1,StringC1... Always remove all spaces.
 				StringA1 = StringA1..wordTable[j][1]
 				StringB1 = StringB1..wordTable[j][2]
 				if BT_WORD_PUNCTUATION_REPLACE[strbyte(wordTable[j][2])] then StringC1 = StringC1..BT_WORD_PUNCTUATION_REPLACE[strbyte(wordTable[j][2])] else StringC1 = StringC1..wordTable[j][2] end
 			end
-			if export then -- If exporting, only include word without punctuation
-				for j=1, getn(tempTable),2 do if BT_WORD_PUNCTUATION_REPLACE[strbyte(tempTable[j][2])] then StringB2 = StringB2..BT_WORD_PUNCTUATION_REPLACE[strbyte(tempTable[j][2])] else StringB2 = StringB2..tempTable[j][2] end end -- StringB2
-			else -- If not exporting, include original word if <= 3 letters, word without ascii, word without most punctuation, and fully stripped word.
-				for j=1, getn(tempTable),2 do StringB2 = StringB2..tempTable[j][2]..tempTable[j+1] end
-				if strlen(StringE1) <= 3 then BadTranslator["IMPORTED"][StringA1] = StringB2 end
+			for j=1, getn(tempTable),2 do StringB2 = StringB2..tempTable[j][2]..tempTable[j+1] end
+			if strsub(StringE1,1,2) ~= strsub(StringE2,1,2) and strsub(StringE1,-2) ~= strsub(StringE2,-2) or (StringLen1 ~= StringLen2 and StringLen1-1 ~= StringLen2 and StringLen1+1 ~= StringLen2 and StringLen1-2 ~= StringLen2 and StringLen1+2 == StringLen2) then 
+				if strlen(StringA1) <= 3 then BadTranslator["IMPORTED"][StringA1] = StringB2 end
 				BadTranslator["IMPORTED"][StringB1] = StringB2
-				BadTranslator["IMPORTED"][StringC1] = StringB2
+				table.insert(BadTranslator["IMPORTTEMP"],{StringC1,StringE1,StringB2})
+			else
+				if strlen(StringA1) <= 3 then BadTranslator["SORT"][StringA1] = StringB2 end
+				BadTranslator["SORT"][StringB1] = StringB2
+				table.insert(BadTranslator["SORTTEMP"],{StringC1,StringE1,StringB2})
 			end
-			BadTranslator["IMPORTED"][StringE1] = StringB2
-		end
-		if export then
-			for j=1, getn(wordTable),2 do
-				if not BadTranslator["IMPORTED"][wordTable[j][2]] then BadTranslator["POSSIBLE"][wordTable[j][2]] = StringE2 end
+			if export then
+				for j=1, getn(wordTable),2 do
+					if strlen(wordTable[j][2]) > 4 then BadTranslator["POSSIBLE"][wordTable[j][2]] = true end
+				end
 			end
 		end
 	end
+	for i=1, getn(BadTranslator["IMPORTTEMP"]) do
+		StringC1 = BadTranslator["IMPORTTEMP"][i][1]
+		StringE1 = BadTranslator["IMPORTTEMP"][i][2]
+		StringB2 = BadTranslator["IMPORTTEMP"][i][3]
+		if not BadTranslator["IMPORTED"][StringC1] then BadTranslator["IMPORTED"][StringC1] = StringB2 end
+		if not BadTranslator["IMPORTED"][StringE1] then BadTranslator["IMPORTED"][StringE1] = StringB2 end
+	end
+	for i=1, getn(BadTranslator["SORTTEMP"]) do
+		StringC1 = BadTranslator["SORTTEMP"][i][1]
+		StringE1 = BadTranslator["SORTTEMP"][i][2]
+		StringB2 = BadTranslator["SORTTEMP"][i][3]
+		if not BadTranslator["SORT"][StringC1] and not BadTranslator["IMPORTED"][StringC1] then BadTranslator["SORT"][StringC1] = StringB2 end
+		if not BadTranslator["SORT"][StringE1] and not BadTranslator["IMPORTED"][StringC1] then BadTranslator["SORT"][StringE1] = StringB2 end
+	end
+	BadTranslator["IMPORTTEMP"] = nil
+	BadTranslator["SORTTEMP"] = nil
+	if export then
+		for word,_ in pairs(BadTranslator["POSSIBLE"]) do
+			if BadTranslator["SORT"][word] or BadTranslator["IMPORTED"][word] then BadTranslator["POSSIBLE"][word] = nil end
+		end
+	end
 end
-function BT_GetListOfUsedWords(addOnly,export,finishOnly)
+function BT_GetListOfUsedWords(addOnly,language,export,finishOnly)
 -- This is for building the word detection database. It's also for exporting words to groupfinder, and for finding potential words for further translation.
 	local origTime = GetTime()
-	local wordTable,wordString = {}
+	local wordTable,wordString,tLen = {}
 	if not finishOnly then if addOnly then if not BadTranslator["WordDetect"] then BadTranslator["WordDetect"] = {} end if not BadTranslator["LANGUAGES"] then BadTranslator["LANGUAGES"] = {} end else for entryName,data in pairs(BadTranslator) do if entryName ~= "Config" then BadTranslator[entryName] = nil end end BadTranslator["WordDetect"] = {} BadTranslator["LANGUAGES"] = {} end BadTranslator["WordList"] = {} BadTranslator["TOTALWORDS"] = {} if export then BadTranslator["OTHER"] = {} BadTranslator["Export"] = { ["WordList"] = {},["WordDetect"] = {} } end else if not BadTranslator["WordList"] or not BadTranslator["WordDetect"] or not BadTranslator["LANGUAGES"] or not BadTranslator["TOTALWORDS"] then DEFAULT_CHAT_FRAME:AddMessage("An error has occurred while trying to finish.") BadTranslator["NOTFINISHED"] = nil return end end
 	for entryName,data in pairs(BT_LANGUAGE_DETECT) do if not BadTranslator["WordDetect"][entryName] then BadTranslator["WordDetect"][entryName] = data end end -- Add hardcoded English words
 	for languageID,wtable in pairs(BT_FOREIGN_CONVERT) do
-		if not wtable["SKIP"] and (not addOnly or not BadTranslator["LANGUAGES"][languageID]) then
-			local langTime = GetTime()
-			if GetTime()-origTime > 30 then BadTranslator["NOTFINISHED"] = export DEFAULT_CHAT_FRAME:AddMessage("Processed for "..(ceil((GetTime()-origTime)*100)/100).." seconds. Stopping. To finish processing, type '/bt finish'.") return end
-			BadTranslator["WordList"][languageID] = {}
-			if export then BadTranslator["OTHER"][languageID] = {} end
-			BadTranslator["TOTALWORDS"][languageID] = 0
-			for i=1, getn(wtable) do
-				wordTable = BT_ProcessStringToTable(wtable[i],nil,true,true,true)
-				for j=1, getn(wordTable), 2 do
-					wordString = wordTable[j][2]
-					if wordString ~= "" and not BT_WORD_PUNCTUATION_NO_SPACE[strbyte(wordString)] then
-						if BT_UNIQUE_SINGLE_WORDS[languageID][wordString] then
-							if not BadTranslator["WordList"][languageID][wordString] then BadTranslator["WordList"][languageID][wordString] = { BT_UNIQUE_SINGLE_WORDS[languageID][wordString],1} else BadTranslator["WordList"][languageID][wordString][2] = BadTranslator["WordList"][languageID][wordString][2] + 1 end
-						elseif wordTable[j+4] and BT_WORD_PUNCTUATION_CONNECTING[wordTable[j+2][2]] and BT_UNIQUE_SINGLE_WORDS[languageID][wordString..wordTable[j+4][2]] then
-							wordString = wordString..wordTable[j+4][2]
-							if not BadTranslator["WordList"][languageID][wordString] then BadTranslator["WordList"][languageID][wordString] = { BT_UNIQUE_SINGLE_WORDS[languageID][wordString],1} else BadTranslator["WordList"][languageID][wordString][2] = BadTranslator["WordList"][languageID][wordString][2] + 1 end
-						else
-							if export and strlen(wordString) > 2 and not BadTranslator["OTHER"][languageID][wordTable[j][1]] and not BT_EXCLUSIONS[wordString] and (BT_ENGLISH_WORDS and not BT_ENGLISH_WORDS[wordString] or not BadTranslator["WordDetect"][wordString]) then BadTranslator["OTHER"][languageID][wordTable[j][1]] = true if wordTable[j+4] and BT_WORD_PUNCTUATION_CONNECTING[wordTable[j+2][2]] and wordTable[j+4][2] == "s" then BadTranslator["OTHER"][languageID][wordTable[j][1]..wordTable[j+4][1]] = true end end
+		if not language or languageID == language then
+			if not wtable["SKIP"] and (not addOnly or not BadTranslator["LANGUAGES"][languageID]) then
+				local langTime = GetTime()
+				if GetTime()-origTime > 30 then BadTranslator["NOTFINISHED"] = export DEFAULT_CHAT_FRAME:AddMessage("Processed for "..(ceil((GetTime()-origTime)*100)/100).." seconds. Stopping. To finish processing, type '/bt finish'.") return end
+				BadTranslator["WordList"][languageID] = {}
+				if export then BadTranslator["OTHER"][languageID] = {} end
+				BadTranslator["TOTALWORDS"][languageID] = 0
+				for i=1, getn(wtable) do
+					wordTable = BT_ProcessStringToTable(wtable[i],nil,true,true,true)
+					tLen = getn(wordTable)
+					for j=1, tLen, 2 do
+						wordString = wordTable[j][2]
+						if wordString ~= "" and not BT_WORD_PUNCTUATION_NO_SPACE[strbyte(wordString)] then
+							if BT_UNIQUE_SINGLE_WORDS[languageID][wordString] then
+								if not BadTranslator["WordList"][languageID][wordString] then BadTranslator["WordList"][languageID][wordString] = { BT_UNIQUE_SINGLE_WORDS[languageID][wordString],1} else BadTranslator["WordList"][languageID][wordString][2] = BadTranslator["WordList"][languageID][wordString][2] + 1 end
+							elseif tLen > j+2 and not BT_WORD_PUNCTUATION_CONNECTING[wordTable[j+2][2]] and BT_UNIQUE_SINGLE_WORDS[languageID][wordString..wordTable[j+2][2]] then
+								wordString = wordString..wordTable[j+2][2]
+								if not BadTranslator["WordList"][languageID][wordString] then BadTranslator["WordList"][languageID][wordString] = { BT_UNIQUE_SINGLE_WORDS[languageID][wordString],1} else BadTranslator["WordList"][languageID][wordString][2] = BadTranslator["WordList"][languageID][wordString][2] + 1 end
+							elseif tLen > j+4 and BT_WORD_PUNCTUATION_CONNECTING[wordTable[j+2][2]] and BT_UNIQUE_SINGLE_WORDS[languageID][wordString..wordTable[j+4][2]] then
+								wordString = wordString..wordTable[j+4][2]
+								if not BadTranslator["WordList"][languageID][wordString] then BadTranslator["WordList"][languageID][wordString] = { BT_UNIQUE_SINGLE_WORDS[languageID][wordString],1} else BadTranslator["WordList"][languageID][wordString][2] = BadTranslator["WordList"][languageID][wordString][2] + 1 end
+							elseif tLen > j+4 and BT_UNIQUE_SINGLE_WORDS[languageID][wordString..wordTable[j+2][2]..wordTable[j+4][2]] then
+								wordString = wordString..wordTable[j+2][2]..wordTable[j+4][2]
+								if not BadTranslator["WordList"][languageID][wordString] then BadTranslator["WordList"][languageID][wordString] = { BT_UNIQUE_SINGLE_WORDS[languageID][wordString],1} else BadTranslator["WordList"][languageID][wordString][2] = BadTranslator["WordList"][languageID][wordString][2] + 1 end
+							elseif tLen > j+6 and BT_UNIQUE_SINGLE_WORDS[languageID][wordString..wordTable[j+2][2]..wordTable[j+4][2]..wordTable[j+6][2]] then
+								wordString = wordString..wordTable[j+2][2]..wordTable[j+4][2]..wordTable[j+6][2]
+								if not BadTranslator["WordList"][languageID][wordString] then BadTranslator["WordList"][languageID][wordString] = { BT_UNIQUE_SINGLE_WORDS[languageID][wordString],1} else BadTranslator["WordList"][languageID][wordString][2] = BadTranslator["WordList"][languageID][wordString][2] + 1 end
+							else
+								if export and strlen(wordString) > 2 and not BadTranslator["OTHER"][languageID][wordTable[j][1]] and not BT_EXCLUSIONS[wordString] and (BT_ENGLISH_WORDS and not BT_ENGLISH_WORDS[wordString] or not BadTranslator["WordDetect"][wordString]) then BadTranslator["OTHER"][languageID][wordTable[j][1]] = true if wordTable[j+4] and BT_WORD_PUNCTUATION_CONNECTING[wordTable[j+2][2]] and wordTable[j+4][2] == "s" then BadTranslator["OTHER"][languageID][wordTable[j][1]..wordTable[j+4][1]] = true end end
+							end
+							BadTranslator["TOTALWORDS"][languageID] = BadTranslator["TOTALWORDS"][languageID] + 1
 						end
-						BadTranslator["TOTALWORDS"][languageID] = BadTranslator["TOTALWORDS"][languageID] + 1
 					end
 				end
+				DEFAULT_CHAT_FRAME:AddMessage("Processed ("..strupper(languageID)..") in "..(ceil((GetTime()-langTime)*100)/100).." seconds.")
+			else
+				DEFAULT_CHAT_FRAME:AddMessage("Skipping ("..strupper(languageID)..")...")
 			end
-			DEFAULT_CHAT_FRAME:AddMessage("Processed ("..strupper(languageID)..") in "..(ceil((GetTime()-langTime)*100)/100).." seconds.")
-		else
-			DEFAULT_CHAT_FRAME:AddMessage("Skipping ("..strupper(languageID)..")...")
+			BadTranslator["LANGUAGES"][languageID] = true
 		end
-		BadTranslator["LANGUAGES"][languageID] = true
 	end
 	for languageID,wtable in pairs(BadTranslator["WordList"]) do
 		for word,dtable in pairs(wtable) do
@@ -458,5 +510,5 @@ end
 
 local displayposition = 1 -- This was just for reading through Chinese to see how well the translator is doing(it's terrible btw).
 function BT_ReadChinese() -- /script BT_ReadChinese()
-	for i=1, 10 do DEFAULT_CHAT_FRAME:AddMessage(BT_TranslateString(BT_CHINESE_CONVERT[displayposition])) displayposition = displayposition + 1 end
+	for i=1, 10 do DEFAULT_CHAT_FRAME:AddMessage(({BT_TranslateString(BT_CHINESE_CONVERT[displayposition])})[1]) displayposition = displayposition + 1 end
 end
